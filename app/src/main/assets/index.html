@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Robot Arm</title>
+<style>
+  :root { --bg:#14171c; --panel:#1d2128; --line:#2c333d; --text:#e6e9ee; --muted:#8b95a3; --accent:#f0a23b; --accent2:#4fb6d6; --danger:#e0341f; --ok:#3fb97a; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; -webkit-touch-callout:none; user-select:none; }
+  html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font:14px system-ui, sans-serif; overflow:hidden; }
+  body { display:flex; flex-direction:column; }
+  button, select, input[type=text], textarea { background:#2a313b; color:var(--text); border:1px solid #3a434f; border-radius:8px; padding:6px 10px; font:inherit; }
+  button:active { background:#3f4a58; }
+  #top { display:flex; gap:6px; align-items:center; padding:5px 8px; border-bottom:1px solid var(--line); height:48px; flex:none; }
+  #top select { max-width:28vw; }
+  #dot { width:10px; height:10px; border-radius:50%; background:#666; flex:none; }
+  #dot.on { background:var(--ok); }
+  #st { font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:22vw; }
+  .sp { flex:1; }
+  #estop { background:var(--danger); border-color:#ff6a55; font-weight:700; padding:8px 14px; }
+  #estop.active { outline:3px solid #fff; }
+  #main { flex:1; min-height:0; position:relative; }
+  .pane { position:absolute; inset:0; padding:8px 10px; display:none; overflow:auto; }
+  .pane.on { display:block; }
+  #p-ctrl.on { display:grid; grid-template-columns:1fr minmax(150px, 24%) 1fr; gap:8px; align-items:center; overflow:hidden; }
+  .stickbox { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; }
+  .stick { width:min(62vh, 30vw); height:min(62vh, 30vw); border-radius:50%; background:#3a3f47; position:relative; touch-action:none; }
+  .knob { position:absolute; left:50%; top:50%; width:26%; height:26%; margin:-13% 0 0 -13%; border-radius:50%; pointer-events:none; }
+  #stickL .knob { background:var(--accent); } #stickR .knob { background:var(--accent2); }
+  .cap { font-size:11px; color:var(--muted); margin-top:4px; text-align:center; }
+  .mid { display:flex; flex-direction:column; gap:6px; }
+  .mid .lbl { font-size:11px; color:var(--muted); text-align:center; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .hold { padding:14px 4px; touch-action:none; font-weight:600; }
+  .speed { display:flex; align-items:center; gap:6px; }
+  .speed input { flex:1; min-width:0; }
+  .row { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:8px; }
+  .joint { display:grid; grid-template-columns:110px 1fr 36px; gap:8px; align-items:center; margin-bottom:6px; }
+  .joint span:last-child { text-align:right; font-variant-numeric:tabular-nums; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .item { display:flex; gap:6px; align-items:center; margin:4px 0; }
+  .item b { flex:1; font-weight:500; overflow:hidden; text-overflow:ellipsis; }
+  h4 { margin:10px 0 6px; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; }
+  #log { font:11px/1.4 monospace; color:var(--muted); height:90px; overflow:auto; white-space:pre-wrap; background:#101318; border-radius:6px; padding:6px; user-select:text; }
+  textarea { width:100%; height:70px; font:11px monospace; user-select:text; }
+  .two-col { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  #tabbar { display:flex; border-top:1px solid var(--line); flex:none; height:42px; }
+  #tabbar button { flex:1; border:0; border-radius:0; background:transparent; color:var(--muted); font-weight:600; }
+  #tabbar button.on { color:var(--accent); background:#1d2128; }
+  label.chk { font-size:13px; margin-right:12px; }
+</style>
+</head>
+<body>
+<div id="top">
+  <select id="dev"></select>
+  <button id="conn">Connect</button>
+  <span id="dot"></span><span id="st">not connected</span>
+  <span class="sp"></span>
+  <button id="mPot">POT</button><button id="mJoy">JOY</button><button id="mHome">HOME</button>
+  <button id="estop">E-STOP</button><button id="reset">RESET</button>
+</div>
+
+<div id="main">
+  <div class="pane on" id="p-ctrl">
+    <div class="stickbox"><div class="stick" id="stickL"><div class="knob"></div></div><div class="cap">Base / Shoulder</div></div>
+    <div class="mid">
+      <div class="lbl">Wrist rotation (hold)</div>
+      <div class="two"><button class="hold" id="rotL">&laquo; ROT</button><button class="hold" id="rotR">ROT &raquo;</button></div>
+      <div class="lbl">Gripper (hold)</div>
+      <div class="two"><button class="hold" id="gClose">CLOSE</button><button class="hold" id="gOpen">OPEN</button></div>
+      <div class="lbl">Speed <b id="spv">5</b></div>
+      <div class="speed"><input id="speed" type="range" min="1" max="10" value="5"></div>
+    </div>
+    <div class="stickbox"><div class="stick" id="stickR"><div class="knob"></div></div><div class="cap">Wrist pitch / Elbow</div></div>
+  </div>
+
+  <div class="pane" id="p-joints">
+    <div id="joints"></div>
+    <div class="cap" style="text-align:left">Each slider sends the joint to an exact angle (switches the arm to command mode). Use POT or JOY to go back.</div>
+  </div>
+
+  <div class="pane" id="p-poses">
+    <div class="two-col">
+      <div>
+        <h4>Poses</h4>
+        <div class="row"><input type="text" id="pname" placeholder="name, e.g. grip_open" style="flex:1;min-width:0"><button id="psave">Save current</button></div>
+        <div id="poses"></div>
+      </div>
+      <div>
+        <h4>Sequence</h4>
+        <div class="row">
+          <label class="chk">delay <input type="text" id="sdelay" value="2" size="2" style="width:44px"> s</label>
+          <label class="chk"><input type="checkbox" id="sloop"> loop</label>
+        </div>
+        <div class="row"><button id="splay">&#9654; Play</button><button id="sstop">Stop</button><button id="sclear">Clear</button></div>
+        <div id="seq"></div>
+        <h4>poses.json (share with the laptop)</h4>
+        <textarea id="pjson" spellcheck="false"></textarea>
+        <div class="row"><button id="pexp">Export</button><button id="pimp">Import</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pane" id="p-more">
+    <h4>Settings</h4>
+    <div class="row">
+      <label class="chk"><input type="checkbox" id="auto"> auto-connect on start / reconnect</label>
+    </div>
+    <div class="row"><span class="cap">Invert:</span>
+      <label class="chk"><input type="checkbox" data-inv="base"> base</label>
+      <label class="chk"><input type="checkbox" data-inv="shoulder"> shoulder</label>
+      <label class="chk"><input type="checkbox" data-inv="elbow"> elbow</label>
+      <label class="chk"><input type="checkbox" data-inv="wrist"> wrist</label>
+    </div>
+    <div class="row"><button id="stopb">STOP (hold position)</button><button id="refresh">Refresh devices</button></div>
+    <h4>Log</h4>
+    <div id="log"></div>
+  </div>
+</div>
+
+<div id="tabbar">
+  <button class="on" data-p="p-ctrl">Control</button>
+  <button data-p="p-joints">Joints</button>
+  <button data-p="p-poses">Poses</button>
+  <button data-p="p-more">More</button>
+</div>
+
+<script>
+"use strict";
+var NAMES = ["Gripper", "Wrist pitch", "Wrist rotate", "Elbow", "Shoulder", "Base"];
+var MIN = [30, 20, 20, 20, 20, 20];
+var MAX = [120, 160, 160, 160, 160, 160];
+var $ = function (s) { return document.querySelector(s); };
+function store(k, v) {
+  try { if (v === undefined) return JSON.parse(localStorage.getItem(k)); localStorage.setItem(k, JSON.stringify(v)); } catch (e) {}
+  return null;
+}
+
+// ---------- الاتصال: جسر أندرويد، أو وضع تجريبي على اللابتوب ----------
+var hasAndroid = typeof Android !== "undefined";
+var demo = { sent: [] };
+var Link = {
+  devices: function () {
+    if (!hasAndroid) return [{ name: "demo HC-05", mac: "00:00:00:00:00:00" }];
+    if (!Android.hasPermission()) { Android.requestPermission(); return null; }
+    return JSON.parse(Android.listDevices());
+  },
+  connect: function (mac) {
+    if (hasAndroid) Android.connect(mac);
+    else setTimeout(function () { window.onBtState("connected", "demo"); }, 100);
+  },
+  disconnect: function () { if (hasAndroid) Android.disconnect(); else window.onBtState("disconnected", ""); },
+  write: function (s) {
+    if (hasAndroid) Android.write(s);
+    else { demo.sent.push(s.trim()); if (s.trim() === "READ") setTimeout(function () { window.onBtLine("POS 90,91,92,93,94,95"); }, 30); }
+  },
+  vibrate: function (ms) { if (hasAndroid) Android.vibrate(ms); }
+};
+
+var connected = false, wantConn = false, mode = "?", estop = false, pos = null;
+var devs = [], pending = 0, lastLine = "";
+
+function log(t) {
+  var el = $("#log");
+  el.textContent += t + "\n";
+  var l = el.textContent.split("\n");
+  if (l.length > 60) el.textContent = l.slice(-50).join("\n");
+  el.scrollTop = el.scrollHeight;
+}
+function refreshUI(msg) {
+  $("#dot").className = connected ? "on" : "";
+  $("#st").textContent = msg || (connected ? ("mode " + mode + (estop ? " | STOP" : "")) : "not connected");
+  $("#estop").classList.toggle("active", estop);
+  $("#conn").textContent = connected ? "Disconnect" : "Connect";
+}
+function send(line, droppable) {
+  if (!connected) return;
+  if (droppable && pending > 2) return;
+  pending++;
+  Link.write(line + "\n");
+  setTimeout(function () { pending = Math.max(0, pending - 1); }, 40);   // 9600 baud: حوالي 35ms للفريم
+}
+
+window.onBtState = function (st, msg) {
+  if (st === "connected") { connected = true; mode = "?"; estop = false; log("connected " + msg); refreshUI(); Link.vibrate(40); setTimeout(function () { send("PING"); send("STATUS"); }, 300); }
+  else if (st === "connecting") { refreshUI("connecting..."); }
+  else {
+    connected = false; log(st + (msg ? ": " + msg : "")); refreshUI(st === "error" ? msg : null);
+    if (wantConn && $("#auto").checked) setTimeout(connect, 3000);
+  }
+};
+window.onBtPerm = function (ok) { log(ok ? "permission granted" : "bluetooth permission denied"); if (ok) loadDevices(); };
+window.onBtLine = function (l) {
+  if (l.indexOf("POS ") === 0) {
+    var a = l.slice(4).split(",").map(Number);
+    if (a.length === 6 && a.every(function (v) { return !isNaN(v); })) { pos = a; showPos(); }
+    return;
+  }
+  var m = l.match(/^STATUS mode=(\w+) estop=(\d)/);
+  if (m) { mode = m[1]; estop = m[2] === "1"; refreshUI(); }
+  log("< " + l);
+};
+
+function loadDevices() {
+  var d = Link.devices();
+  if (d === null) { log("allow bluetooth permission, then press Refresh"); return; }
+  devs = d;
+  var sel = $("#dev");
+  sel.innerHTML = "";
+  d.forEach(function (x) { var o = document.createElement("option"); o.value = x.mac; o.textContent = x.name; sel.appendChild(o); });
+  var last = store("lastMac");
+  if (last && d.some(function (x) { return x.mac === last; })) sel.value = last;
+  if (!d.length) log("no paired devices: pair HC-05 first from Android Bluetooth settings (PIN 1234 or 0000)");
+}
+function connect() {
+  var mac = $("#dev").value;
+  if (!mac) { log("pick a paired device first"); return; }
+  store("lastMac", mac);
+  wantConn = true;
+  Link.connect(mac);
+}
+$("#conn").onclick = function () {
+  if (connected) { wantConn = false; Link.disconnect(); } else connect();
+};
+$("#refresh").onclick = loadDevices;
+
+// ---------- المدخلات ----------
+function makeStick(sel) {
+  var el = $(sel), knob = el.querySelector(".knob"), s = { x: 0, y: 0 }, active = false;
+  function upd(e) {
+    var r = el.getBoundingClientRect(), R = r.width / 2;
+    var dx = (e.clientX - (r.left + R)) / R, dy = (e.clientY - (r.top + R)) / R, l = Math.hypot(dx, dy);
+    if (l > 1) { dx /= l; dy /= l; }
+    s.x = Math.round(dx * 100); s.y = Math.round(-dy * 100);
+    knob.style.transform = "translate(" + (dx * R * 0.74) + "px," + (dy * R * 0.74) + "px)";
+  }
+  function end() { active = false; s.x = 0; s.y = 0; knob.style.transform = ""; }
+  el.addEventListener("pointerdown", function (e) { active = true; el.setPointerCapture(e.pointerId); upd(e); });
+  el.addEventListener("pointermove", function (e) { if (active) upd(e); });
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", end);
+  return s;
+}
+var L = makeStick("#stickL"), Rr = makeStick("#stickR");
+var hold = { rot: 0, grip: 0 };
+function holdBtn(sel, key, val) {
+  var b = $(sel);
+  b.addEventListener("pointerdown", function (e) { b.setPointerCapture(e.pointerId); hold[key] = val; });
+  var up = function () { hold[key] = 0; };
+  b.addEventListener("pointerup", up); b.addEventListener("pointercancel", up);
+}
+holdBtn("#rotL", "rot", -1); holdBtn("#rotR", "rot", 1);
+holdBtn("#gClose", "grip", -1); holdBtn("#gOpen", "grip", 1);
+
+var inv = store("inv") || {};
+function inputs() {
+  var sg = function (n) { return inv[n] ? -1 : 1; };
+  // ترتيب الفريم: base, shoulder, elbow, wrist pitch, wrist rotation, gripper (زي أبلكيشن يوسف)
+  return [L.x * sg("base"), L.y * sg("shoulder"), Rr.y * sg("elbow"), Rr.x * sg("wrist"), hold.rot, hold.grip];
+}
+
+// ---------- الأوامر ----------
+function ensureJoy() { if (mode !== "JOY") { send("MODE:JOY"); mode = "JOY"; refreshUI(); } }
+function doEstop() {
+  seqStop();
+  estop = true; refreshUI(); Link.vibrate(120);
+  send("X"); setTimeout(function () { send("X"); }, 60); setTimeout(function () { send("X"); }, 120);
+  log("EMERGENCY STOP");
+}
+function doReset() { estop = false; send("R"); log("reset"); refreshUI(); }
+function doHome() { if (estop) return; seqStop(); send("HOME"); mode = "CMD"; refreshUI(); }
+$("#estop").onclick = doEstop;
+$("#reset").onclick = doReset;
+$("#mPot").onclick = function () { if (!estop) { seqStop(); send("MODE:POT"); mode = "POT"; refreshUI(); } };
+$("#mJoy").onclick = function () { if (!estop) { send("MODE:JOY"); mode = "JOY"; refreshUI(); } };
+$("#mHome").onclick = doHome;
+$("#stopb").onclick = function () { seqStop(); send("STOP"); mode = "CMD"; refreshUI(); };
+$("#speed").oninput = function (e) { $("#spv").textContent = e.target.value; };
+
+var wasActive = false;
+setInterval(function () {
+  if (!connected || estop) return;
+  var f = inputs(), act = f.some(function (v) { return v !== 0; });
+  if (act || wasActive) { ensureJoy(); send("S," + f.join(",") + "," + $("#speed").value, true); }
+  wasActive = act;
+}, 100);
+setInterval(function () { if (connected && !estop) send("READ", true); }, 600);
+document.addEventListener("visibilitychange", function () { if (document.hidden) { L.x = L.y = Rr.x = Rr.y = 0; hold.rot = hold.grip = 0; } });
+
+// ---------- مفاصل ----------
+var jw = $("#joints"), sliders = [], dragAt = [0, 0, 0, 0, 0, 0];
+for (var i = 5; i >= 0; i--) (function (i) {
+  var row = document.createElement("div");
+  row.className = "joint";
+  row.innerHTML = "<span>" + (i + 1) + " " + NAMES[i] + '</span><input type="range" min="' + MIN[i] + '" max="' + MAX[i] + '" value="90"><span>--</span>';
+  var inp = row.children[1], val = row.children[2];
+  inp.addEventListener("input", function () {
+    dragAt[i] = Date.now(); val.textContent = inp.value;
+    if (estop) return;
+    send("S" + (i + 1) + ":" + inp.value, true); mode = "CMD";
+  });
+  jw.appendChild(row); sliders[i] = { inp: inp, val: val };
+})(i);
+function showPos() {
+  for (var i = 0; i < 6; i++) {
+    sliders[i].val.textContent = pos[i];
+    if (Date.now() - dragAt[i] > 800) sliders[i].inp.value = pos[i];
+  }
+}
+
+// ---------- أوضاع وتسلسل ----------
+var poses = store("poses") || {}, seq = store("seq") || [], playing = false, seqTimer = null, seqIdx = 0;
+function savePoses() { store("poses", poses); store("seq", seq); }
+function renderPoses() {
+  var box = $("#poses"); box.innerHTML = "";
+  Object.keys(poses).forEach(function (n) {
+    var d = document.createElement("div"); d.className = "item";
+    var b = document.createElement("b"); b.textContent = n;
+    var go = document.createElement("button"); go.textContent = "Go";
+    go.onclick = function () { if (!estop) { send("ALL:" + poses[n].join(",")); mode = "CMD"; refreshUI(); } };
+    var add = document.createElement("button"); add.textContent = "+seq";
+    add.onclick = function () { seq.push(n); savePoses(); renderSeq(); };
+    var del = document.createElement("button"); del.textContent = "x";
+    del.onclick = function () { delete poses[n]; savePoses(); renderPoses(); };
+    d.appendChild(b); d.appendChild(go); d.appendChild(add); d.appendChild(del); box.appendChild(d);
+  });
+}
+function renderSeq() {
+  var box = $("#seq"); box.innerHTML = "";
+  seq.forEach(function (n, k) {
+    var d = document.createElement("div"); d.className = "item";
+    d.innerHTML = "<b>" + (k + 1) + ". " + n + "</b>";
+    var del = document.createElement("button"); del.textContent = "x";
+    del.onclick = function () { seq.splice(k, 1); savePoses(); renderSeq(); };
+    d.appendChild(del); box.appendChild(d);
+  });
+}
+function seqStop() { playing = false; if (seqTimer) clearTimeout(seqTimer); seqTimer = null; }
+function seqStep() {
+  if (!playing || estop) return;
+  if (seqIdx >= seq.length) { if ($("#sloop").checked && seq.length) seqIdx = 0; else { playing = false; return; } }
+  var n = seq[seqIdx++];
+  if (poses[n]) { send("ALL:" + poses[n].join(",")); mode = "CMD"; refreshUI(); }
+  var d = Math.max(0.5, parseFloat($("#sdelay").value) || 2);
+  seqTimer = setTimeout(seqStep, d * 1000);
+}
+$("#splay").onclick = function () { if (!seq.length || estop || !connected) return; seqStop(); playing = true; seqIdx = 0; seqStep(); };
+$("#sstop").onclick = function () { seqStop(); send("STOP"); mode = "CMD"; refreshUI(); };
+$("#sclear").onclick = function () { seq = []; savePoses(); renderSeq(); };
+$("#psave").onclick = function () {
+  var n = $("#pname").value.trim();
+  if (!n) { log("type a pose name first"); return; }
+  if (!pos) { log("no position yet: connect first"); return; }
+  poses[n] = pos.slice(); savePoses(); $("#pname").value = ""; renderPoses();
+};
+$("#pexp").onclick = function () {
+  var o = {};
+  Object.keys(poses).forEach(function (n) { o[n] = {}; poses[n].forEach(function (a, i) { o[n][String(i + 1)] = a; }); });
+  $("#pjson").value = JSON.stringify(o, null, 1);
+};
+$("#pimp").onclick = function () {
+  try {
+    var o = JSON.parse($("#pjson").value), c = 0;
+    Object.keys(o).forEach(function (n) {
+      var arr = [];
+      for (var i = 1; i <= 6; i++) arr.push(o[n][String(i)] !== undefined ? o[n][String(i)] : (pos ? pos[i - 1] : 90));
+      poses[n] = arr; c++;
+    });
+    savePoses(); renderPoses(); log("imported " + c + " poses");
+  } catch (e) { log("bad json: " + e.message); }
+};
+
+// ---------- تبويبات وإعدادات ----------
+document.querySelectorAll("#tabbar button").forEach(function (b) {
+  b.onclick = function () {
+    document.querySelectorAll("#tabbar button").forEach(function (x) { x.classList.toggle("on", x === b); });
+    document.querySelectorAll(".pane").forEach(function (p) { p.classList.toggle("on", p.id === b.dataset.p); });
+  };
+});
+document.querySelectorAll("[data-inv]").forEach(function (c) {
+  c.checked = !!inv[c.dataset.inv];
+  c.onchange = function () { inv[c.dataset.inv] = c.checked; store("inv", inv); };
+});
+var autoOn = store("auto"); $("#auto").checked = autoOn === null ? true : autoOn;
+$("#auto").onchange = function () { store("auto", $("#auto").checked); };
+
+renderPoses(); renderSeq(); refreshUI();
+setTimeout(function () {
+  loadDevices();
+  if ($("#auto").checked && $("#dev").value && store("lastMac") === $("#dev").value) connect();
+}, 400);
+</script>
+</body>
+</html>

@@ -1,0 +1,52 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.9
+
+      - name: Build debug APK
+        shell: bash
+        run: gradle assembleDebug --no-daemon 2>&1 | tee build.log
+
+      - name: Rename APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk RobotArm.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RobotArm-apk
+          path: RobotArm.apk
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest APK
+          files: RobotArm.apk
+
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tail -n 80 build.log > body.md || echo "no log" > body.md
+          gh issue create --title "build failed" --body-file body.md
