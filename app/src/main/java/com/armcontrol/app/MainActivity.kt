@@ -129,23 +129,38 @@ class MainActivity : Activity() {
     }
 
     @SuppressLint("MissingPermission")
+    private fun openSocket(dev: android.bluetooth.BluetoothDevice): BluetoothSocket {
+        // الطريقة العادية، ولو فشلت نجرب القناة 1 مباشرة (HC-05 بيشتغل بيها)
+        try {
+            val sk = dev.createRfcommSocketToServiceRecord(spp)
+            sk.connect()
+            return sk
+        } catch (e: Exception) {
+            val sk = dev.javaClass.getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
+                .invoke(dev, 1) as BluetoothSocket
+            sk.connect()
+            return sk
+        }
+    }
+
+    @SuppressLint("MissingPermission")
     private fun doConnect(mac: String) {
         closeSocket()
         state("connecting", mac)
         try {
+            if (!hasPerm()) throw Exception("allow Nearby devices permission, then press Connect")
             val ad = adapter() ?: throw Exception("no bluetooth on this phone")
             if (!ad.isEnabled) throw Exception("Bluetooth is off")
             val dev = ad.getRemoteDevice(mac)
-            ad.cancelDiscovery()
-            val sk = dev.createRfcommSocketToServiceRecord(spp)
-            sk.connect()
+            // مفيش cancelDiscovery هنا: بتطلب صلاحية SCAN على أندرويد 12+ وكانت سبب فشل الاتصال
+            val sk = openSocket(dev)
             socket = sk
             out = sk.outputStream
             state("connected", dev.name ?: mac)
             readLoop(sk.inputStream)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             closeSocket()
-            state("error", e.message ?: "connect failed")
+            state("error", e.message ?: "connect failed (is the HC-05 paired and powered?)")
         }
     }
 
