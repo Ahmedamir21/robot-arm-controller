@@ -7,11 +7,15 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothSocket
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.view.View
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
@@ -30,6 +34,7 @@ class MainActivity : Activity() {
     @Volatile private var socket: BluetoothSocket? = null
     @Volatile private var out: OutputStream? = null
     private val writer = Executors.newSingleThreadExecutor()
+    private var recognizer: SpeechRecognizer? = null
     private val spp: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -60,6 +65,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        recognizer?.destroy()
         closeSocket()
         super.onDestroy()
     }
@@ -69,7 +75,7 @@ class MainActivity : Activity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         val ok = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
-        js("window.onBtPerm($ok)")
+        if (requestCode == 2) js("window.onMicPerm($ok)") else js("window.onBtPerm($ok)")
     }
 
     private fun hasPerm(): Boolean =
@@ -85,6 +91,35 @@ class MainActivity : Activity() {
 
     private fun state(st: String, msg: String) {
         js("window.onBtState(${JSONObject.quote(st)}, ${JSONObject.quote(msg)})")
+    }
+
+    private fun doVoice(lang: String) {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            js("window.onVoiceState('no speech service on this phone')")
+            return
+        }
+        val sr = recognizer ?: SpeechRecognizer.createSpeechRecognizer(this).also { recognizer = it }
+        sr.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) { js("window.onVoiceState('listening...')") }
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() { js("window.onVoiceState('thinking...')") }
+            override fun onError(error: Int) { js("window.onVoiceState('error', $error)") }
+            override fun onResults(results: Bundle?) {
+                val list = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                val arr = JSONArray()
+                if (list != null) for (t in list) arr.put(t)
+                js("window.onVoice(${arr.toString()})")
+            }
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+        val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang)
+        i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+        sr.startListening(i)
     }
 
     private fun closeSocket() {
@@ -188,6 +223,20 @@ class MainActivity : Activity() {
                     }
                 }
             }
+        }
+
+        @JavascriptInterface
+        fun hasMic(): Boolean =
+            checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+        @JavascriptInterface
+        fun requestMic() {
+            runOnUiThread { requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 2) }
+        }
+
+        @JavascriptInterface
+        fun startVoice(lang: String) {
+            runOnUiThread { doVoice(lang) }
         }
 
         @Suppress("DEPRECATION")
