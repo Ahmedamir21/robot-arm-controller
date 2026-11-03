@@ -80,6 +80,7 @@ window.onBtLine = function (l) {
     refreshUI();
     return;
   }
+  if (l === "PONG" || l.indexOf("OK") === 0) return;     // ردود عادية، مش محتاجة سطر في اللوج
   log("< " + l);
 };
 
@@ -97,6 +98,7 @@ function loadDevices() {
 function connect() {
   var mac = $("#dev").value;
   if (!mac) { log("pick a paired device first"); return; }
+  if (hasAndroid && !Android.hasPermission()) { Android.requestPermission(); log("allow Nearby devices, then press Connect again"); return; }
   store("lastMac", mac);
   wantConn = true;
   Link.connect(mac);
@@ -299,7 +301,7 @@ function drawArm() {
 var WORDS = {
   estop: ["emergency", "طوارئ"],
   stop: ["stop", "وقف", "قف", "استوب"],
-  pick: ["pick", "امسك", "خد"],
+  pick: ["pick", "make", "امسك", "خد"],
   home: ["home", "بيت", "رجع", "ارجع"],
   up: ["up", "raise", "اطلع", "فوق", "ارفع"],
   down: ["down", "lower", "انزل", "تحت"],
