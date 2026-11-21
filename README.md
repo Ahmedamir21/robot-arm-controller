@@ -1,25 +1,31 @@
-# Robot Arm Controller (Android)
+# Mobile Robotic Manipulator (CSAI 205, projects 3 + 4)
 
-Android app to control our 6-DOF robotic arm (CSAI 205 project) from a phone over a Bluetooth HC-05 module.
+A 4WD car with a 6-servo robotic arm. The phone controls everything over a Bluetooth HC-05. The car can also drive by itself and avoid obstacles with an ultrasonic sensor on a servo.
 
-## Features
-- Two joysticks (base/shoulder and wrist pitch/elbow), wrist rotation and gripper hold buttons, speed slider
-- Emergency stop and reset buttons
-- Mode buttons: POT (potentiometers), JOY (phone joystick), HOME
-- Per-joint sliders with live angles read from the arm
-- Saved poses and a pose sequence (play, loop)
-- Export / import poses as poses.json (same format as the laptop Python scripts)
-- Auto reconnect to the last paired HC-05
+## What is in this repo
+- `app/` Android app (a WebView page in `app/src/main/assets` and a small Kotlin bridge for Bluetooth and voice)
+- `firmware/` Arduino sketches: `car_uno2` (car + Bluetooth + obstacle avoidance), `arm_uno1` (arm), `calib_uno1` (servo calibration), `cam_esp32` (camera stream)
+- `firmware/TEST_AND_SPEC.md` wiring notes and the order to test things
 
-## Install
-Download `RobotArm.apk` from the Releases page, open it on the phone and allow install from unknown sources.
-Pair the HC-05 first from the phone Bluetooth settings (PIN 1234 or 0000), then open the app, pick it and press Connect.
+## App
+- Drive tab: joystick for the car, speed slider, AUTO button (obstacle avoidance), camera view
+- Arm tab: hold buttons for the 6 joints, Home, speed, invert checkbox per joint
+- Voice tab: say a part and a direction in Arabic or English, e.g. "elbow down" or "كوع تحت". Wrong directions are refused and the app says why
+- STOP button is always on top. It sends X and locks the controls until you press Release
+- The app stops everything if it goes to the background
 
-## Protocol (9600 baud, lines ending with newline)
-- `S,base,shoulder,elbow,wristPitch,wristRot,gripper,speed` joystick frame (-100..100, speed 1..10), sent 10 times per second
-- `X` emergency stop, `R` reset
-- `MODE:POT`, `MODE:JOY`, `HOME`, `STOP`, `READ`, `STATUS`, `ALL:a,b,c,d,e,f`, `S1:90` ... `S6:90`
+## Protocol (9600 baud, lines end with newline, values -100..100)
+- `S,base,shoulder,elbow,wristPitch,wristRoll,gripper` arm speeds, sent every 60 ms while a button is held
+- `D,left,right` car wheel speeds
+- `A,1` obstacle avoidance on (send every 200 ms), `A,0` off
+- `X` stop everything, `R` arm home
+- Replies from the car: `MODE,AUTO`, `MODE,MAN`, `DST,<cm>`, `ERR,<code>`
+
+## Safety
+The sketches refuse to move until you fill in their CONFIG block (servo limits, motor sides). If the phone is silent for 500 ms everything stops. The arm and the car never move together.
+
+## Camera
+The ESP32-CAM makes its own Wi-Fi (`ROBOT-CAM`). Join it from the phone, then use the camera button in the Drive tab. Bluetooth stays connected.
 
 ## Build
-The APK is built by GitHub Actions on every push (see `.github/workflows/build.yml`).
-Locally: `gradle assembleDebug` with the Android SDK installed.
+The APK is built by GitHub Actions on every push to main (`.github/workflows/build.yml`). Locally: `gradle assembleDebug`.

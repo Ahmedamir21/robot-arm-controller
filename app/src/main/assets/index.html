@@ -2,116 +2,60 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Robot Arm</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Mobile Robot</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
-<div id="top">
+<header>
   <select id="dev"></select>
   <button id="conn">Connect</button>
-  <span id="dot"></span><span id="st">not connected</span><span id="ir" title="IR sensor">IR</span>
-  <span class="sp"></span>
-  <button id="mPot">POT</button><button id="mJoy">JOY</button><button id="mHome">HOME</button>
-  <button id="estop">E-STOP</button><button id="reset">RESET</button>
-</div>
+  <span id="st" class="chip">offline</span>
+  <span id="mode" class="chip">MAN</span>
+  <span id="dist" class="chip">-- cm</span>
+  <span id="err" class="chip hide"></span>
+  <button id="estop">STOP</button>
+</header>
+<nav>
+  <button data-t="drive" class="on">Drive</button>
+  <button data-t="arm">Arm</button>
+  <button data-t="voice">Voice</button>
+</nav>
 
-<div id="main">
-  <div class="pane on" id="p-ctrl">
-    <div class="stickbox"><div class="stick" id="stickL"><div class="knob"></div></div><div class="cap">Base / Shoulder</div></div>
-    <div class="mid">
-      <div class="lbl">Wrist rotation (hold)</div>
-      <div class="two"><button class="hold" id="rotL">&laquo; ROT</button><button class="hold" id="rotR">ROT &raquo;</button></div>
-      <div class="lbl">Gripper (hold)</div>
-      <div class="two"><button class="hold" id="gClose">CLOSE</button><button class="hold" id="gOpen">OPEN</button></div>
-      <div class="lbl">Speed <b id="spv">5</b></div>
-      <div class="speed"><input id="speed" type="range" min="1" max="10" value="5"></div>
-      <div class="row" style="margin:0"><button class="vmicbtn" style="flex:1">&#127908; Speak</button><select class="vlangsel"><option value="en-US">English</option><option value="ar-EG">العربي</option></select></div>
-      <div class="cap vstat" style="margin:0"></div>
-    </div>
-    <div class="stickbox"><div class="stick" id="stickR"><div class="knob"></div></div><div class="cap">Wrist pitch / Elbow</div></div>
+<section id="drive" class="tab on">
+  <div class="pad">
+    <div id="joy"><div id="knob"></div></div>
+    <label>Speed <input id="spd" type="range" min="20" max="100" value="60"></label>
   </div>
-
-  <div class="pane" id="p-joints">
-    <div class="two-col">
-      <div>
-        <div id="joints"></div>
-        <div class="cap" style="text-align:left">Each slider sends the joint to an exact angle (switches the arm to command mode). Use POT or JOY to go back.</div>
-      </div>
-      <div>
-        <svg id="viz" viewBox="0 0 220 200">
-          <line class="ground" x1="20" y1="170" x2="150" y2="170"/>
-          <polyline class="arm" id="vArm" points=""/>
-          <line class="fing" id="vG1"/><line class="fing" id="vG2"/>
-          <circle class="ring" cx="185" cy="40" r="22"/>
-          <line class="needle" id="vBaseL" x1="185" y1="40" x2="185" y2="18"/>
-          <text x="185" y="78">base</text>
-        </svg>
-        <div class="cap">live drawing from the arm's real angles (schematic)</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="pane" id="p-poses">
-    <div class="two-col">
-      <div>
-        <h4>Poses</h4>
-        <div class="row"><input type="text" id="pname" placeholder="name, e.g. grip_open" style="flex:1;min-width:0"><button id="psave">Save current</button></div>
-        <div id="poses"></div>
-      </div>
-      <div>
-        <h4>Sequence</h4>
-        <div class="row">
-          <label class="chk">delay <input type="text" id="sdelay" value="2" size="2" style="width:44px"> s</label>
-          <label class="chk"><input type="checkbox" id="sloop"> loop</label>
-        </div>
-        <div class="row"><button id="splay">&#9654; Play</button><button id="sstop">Stop</button><button id="sclear">Clear</button></div>
-        <div id="seq"></div>
-        <h4>Motion (record / replay)</h4>
-        <div class="row"><button id="mrec">&#9679; Rec</button><button id="mstop">&#9632; Stop</button><button id="mplay">&#9654; Play</button><span id="mst" class="cap"></span></div>
-        <div class="row"><input type="text" id="mname" placeholder="motion name" style="flex:1;min-width:0"><button id="msave">Save</button></div>
-        <div id="motions"></div>
-        <h4>poses.json (share with the laptop)</h4>
-        <textarea id="pjson" spellcheck="false"></textarea>
-        <div class="row"><button id="pexp">Export</button><button id="pimp">Import</button></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="pane" id="p-voice">
-    <div class="row"><button class="vmicbtn" style="padding:14px 22px;font-size:17px">&#127908; Speak</button><select class="vlangsel"><option value="en-US">English</option><option value="ar-EG">العربي</option></select><span class="cap vstat"></span></div>
-    <div class="row"><input type="text" id="vtext" placeholder="or type a command" style="flex:1;min-width:0"><button id="vsend">Send</button></div>
-    <h4>Heard</h4>
-    <div id="vlog" class="cap" style="text-align:left"></div>
-    <div class="cap" style="text-align:left">up down left right open close pick stop home manual emergency (Arabic works too). Poses named like the command (e.g. "up") are used if you saved them.</div>
-  </div>
-
-  <div class="pane" id="p-more">
-    <h4>Settings</h4>
+  <div class="cam">
+    <img id="cam" alt="camera">
     <div class="row">
-      <label class="chk"><input type="checkbox" id="auto"> auto-connect on start / reconnect</label>
+      <button id="camBtn">Camera on/off</button>
+      <button id="auto">AUTO: off</button>
     </div>
-    <div class="row"><span class="cap">Invert:</span>
-      <label class="chk"><input type="checkbox" data-inv="base"> base</label>
-      <label class="chk"><input type="checkbox" data-inv="shoulder"> shoulder</label>
-      <label class="chk"><input type="checkbox" data-inv="elbow"> elbow</label>
-      <label class="chk"><input type="checkbox" data-inv="wrist"> wrist</label>
-    </div>
-    <div class="row"><button id="stopb">STOP (hold position)</button><button id="refresh">Refresh devices</button></div>
-    <div class="row"><span class="cap">Theme:</span><select id="theme"><option value="dark">Dark</option><option value="light">Light</option></select></div>
-    <h4>Log</h4>
-    <div id="log"></div>
+    <small>Camera: join the Wi-Fi ROBOT-CAM (the stream is at 192.168.4.1/stream). Bluetooth stays connected.</small>
   </div>
-</div>
+</section>
 
-<div id="tabbar">
-  <button class="on" data-p="p-ctrl">Control</button>
-  <button data-p="p-joints">Joints</button>
-  <button data-p="p-poses">Poses</button>
-  <button data-p="p-voice">Voice</button>
-  <button data-p="p-more">More</button>
-</div>
+<section id="arm" class="tab">
+  <div id="joints"></div>
+  <div class="row">
+    <button id="home">Home</button>
+    <label>Speed <input id="aspd" type="range" min="20" max="100" value="50"></label>
+  </div>
+</section>
 
+<section id="voice" class="tab">
+  <div class="row">
+    <button id="mic">Listen</button>
+    <select id="lang"><option value="ar-EG">Arabic</option><option value="en-US">English</option></select>
+    <span id="sel" class="chip">part: -</span>
+  </div>
+  <div id="heard">Say: part + direction. Example: "elbow down", "كوع تحت", "car forward", "عربية قدام".</div>
+  <div id="help"></div>
+</section>
+
+<div id="lock" class="hide">STOPPED <button id="unlock">Release</button></div>
 <script src="app.js"></script>
 </body>
 </html>
